@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MailWatch — Email Überwachung</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #0f1318;
+    --surface2: #161b24;
+    --border: #1e2735;
+    --accent: #00e5ff;
+    --accent2: #ff3d71;
+    --accent3: #ffaa00;
+    --accent4: #39ff14;
+    --text: #e8edf5;
+    --text-dim: #5a6a82;
+    --text-mid: #8a9ab5;
+    --glow: 0 0 20px rgba(0,229,255,0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 3px,
+      rgba(0,0,0,0.08) 3px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  /* Grid noise bg */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(0,229,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.02) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    grid-template-rows: 56px 1fr;
+    min-height: 100vh;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ───── TOPBAR ───── */
+  .topbar {
+    grid-column: 1 / -1;
+    background: rgba(10,12,16,0.95);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    backdrop-filter: blur(12px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .logo-icon {
+    width: 28px;
+    height: 28px;
+    background: var(--accent);
+    clip-path: polygon(0 30%, 50% 0, 100% 30%, 100% 70%, 50% 100%, 0 70%);
+    animation: pulse-icon 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse-icon {
+    0%, 100% { opacity: 1; box-shadow: 0 0 12px var(--accent); }
+    50% { opacity: 0.7; box-shadow: 0 0 24px var(--accent); }
+  }
+
+  .logo span { color: var(--accent); }
+
+  .topbar-center {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    width: 340px;
+  }
+
+  .topbar-center input {
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    width: 100%;
+  }
+
+  .topbar-center input::placeholder { color: var(--text-dim); }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--accent4);
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent4);
+    animation: blink 1.4s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), #0066ff);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 2px solid var(--border);
+  }
+
+  /* ───── SIDEBAR ───── */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+  }
+
+  .sidebar-section {
+    padding: 12px 16px 6px;
+    font-size: 9px;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-mid);
+    transition: all 0.2s;
+    border-left: 2px solid transparent;
+    margin: 0 0px;
+  }
+
+  .nav-item:hover {
+    color: var(--text);
+    background: var(--surface2);
+    border-left-color: var(--border);
+  }
+
+  .nav-item.active {
+    color: var(--accent);
+    background: rgba(0,229,255,0.05);
+    border-left-color: var(--accent);
+  }
+
+  .nav-item-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .nav-icon {
+    font-size: 14px;
+    width: 18px;
+    text-align: center;
+  }
+
+  .badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+
+  .badge-red { background: rgba(255,61,113,0.15); color: var(--accent2); }
+  .badge-yellow { background: rgba(255,170,0,0.15); color: var(--accent3); }
+  .badge-cyan { background: rgba(0,229,255,0.15); color: var(--accent); }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .sidebar-footer-info {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.8;
+  }
+
+  /* ───── MAIN ───── */
+  .main {
+    overflow-y: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .page-title {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  .page-title span { color: var(--accent); }
+
+  .page-subtitle {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  .btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    letter-spacing: 0.03em;
+    transition: all 0.2s;
+  }
+
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-mid);
+  }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+  }
+  .btn-primary:hover { box-shadow: 0 0 20px rgba(0,229,255,0.4); }
+
+  /* ───── KPI ROW ───── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .kpi-card:hover { border-color: var(--accent); }
+
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .kpi-card.k1::before { background: var(--accent); }
+  .kpi-card.k2::before { background: var(--accent2); }
+  .kpi-card.k3::before { background: var(--accent3); }
+  .kpi-card.k4::before { background: var(--accent4); }
+
+  .kpi-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .kpi-value {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .kpi-card.k1 .kpi-value { color: var(--accent); }
+  .kpi-card.k2 .kpi-value { color: var(--accent2); }
+  .kpi-card.k3 .kpi-value { color: var(--accent3); }
+  .kpi-card.k4 .kpi-value { color: var(--accent4); }
+
+  .kpi-delta {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .delta-up { color: var(--accent4); }
+  .delta-down { color: var(--accent2); }
+
+  .kpi-sparkline {
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 80px; height: 40px;
+    opacity: 0.3;
+  }
+
+  /* ───── CONTENT GRID ───── */
+  .content-grid {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-title-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  .card-action {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    cursor: pointer;
+    letter-spacing: 0.05em;
+  }
+
+  /* ───── CHART ───── */
+  .chart-area {
+    padding: 18px;
+    height: 220px;
+    position: relative;
+  }
+
+  .chart-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .chart-labels {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 18px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  /* ───── EMAIL TABLE ───── */
+  .email-table { width: 100%; }
+
+  .email-table thead tr {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .email-table th {
+    padding: 10px 18px;
+    text-align: left;
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    font-weight: 400;
+  }
+
+  .email-table tbody tr {
+    border-bottom: 1px solid rgba(30,39,53,0.5);
+    transition: background 0.15s;
+    cursor: pointer;
+  }
+
+  .email-table tbody tr:hover { background: var(--surface2); }
+
+  .email-table td {
+    padding: 11px 18px;
+    font-size: 12px;
+    vertical-align: middle;
+  }
+
+  .email-sender {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .sender-avatar {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .sender-name { font-weight: 600; font-size: 12px; }
+  .sender-addr {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .subject-text {
+    font-size: 12px;
+    max-width: 240px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-mid);
+  }
+
+  .time-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .status-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 4px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .st-spam { background: rgba(255,61,113,0.12); color: var(--accent2); border: 1px solid rgba(255,61,113,0.2); }
+  .st-clean { background: rgba(57,255,20,0.08); color: var(--accent4); border: 1px solid rgba(57,255,20,0.2); }
+  .st-suspect { background: rgba(255,170,0,0.12); color: var(--accent3); border: 1px solid rgba(255,170,0,0.2); }
+  .st-phish { background: rgba(255,61,113,0.2); color: #ff8fab; border: 1px solid rgba(255,61,113,0.3); }
+
+  .score-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .score-bar {
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+    width: 60px;
+    position: relative;
+  }
+
+  .score-fill {
+    height: 100%;
+    border-radius: 2px;
+    position: absolute;
+    left: 0; top: 0;
+  }
+
+  .score-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-mid);
+    min-width: 28px;
+  }
+
+  /* ───── RIGHT PANEL ───── */
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+
+  /* Alert feed */
+  .alert-list { padding: 4px 0; }
+
+  .alert-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(30,39,53,0.4);
+    transition: background 0.15s;
+    cursor: pointer;
+    align-items: flex-start;
+  }
+
+  .alert-item:hover { background: var(--surface2); }
+
+  .alert-icon {
+    width: 30px; height: 30px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .ai-red { background: rgba(255,61,113,0.12); }
+  .ai-yellow { background: rgba(255,170,0,0.12); }
+  .ai-cyan { background: rgba(0,229,255,0.12); }
+
+  .alert-body {}
+
+  .alert-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+
+  .alert-desc {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .alert-time {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 5px;
+  }
+
+  /* Donut chart */
+  .donut-area {
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .donut-svg { flex-shrink: 0; }
+
+  .donut-legend { flex: 1; }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 12px;
+  }
+
+  .legend-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 2px;
+  }
+
+  .legend-pct {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-mid);
+  }
+
+  /* Bottom row */
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+  }
+
+  .mini-stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mini-stat-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  .mini-stat-value {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+
+  .mini-stat-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  /* Animations */
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .kpi-card { animation: fadeSlideIn 0.4s ease both; }
+  .kpi-card:nth-child(1) { animation-delay: 0.05s; }
+  .kpi-card:nth-child(2) { animation-delay: 0.1s; }
+  .kpi-card:nth-child(3) { animation-delay: 0.15s; }
+  .kpi-card:nth-child(4) { animation-delay: 0.2s; }
+
+  .card { animation: fadeSlideIn 0.4s ease 0.2s both; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .progress-ring {
+    transform-origin: center;
+    transition: stroke-dashoffset 1s ease;
+  }
+
+  /* Tooltip */
+  .tooltip {
+    position: absolute;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    pointer-events: none;
+    display: none;
+    z-index: 50;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="logo">
+      <div class="logo-icon"></div>
+      Mail<span>Watch</span>
+    </div>
+
+    <div class="topbar-center">
+      <span style="color:var(--text-dim)">⌕</span>
+      <input type="text" placeholder="E-Mail, Absender oder Betreff suchen...">
+      <span style="color:var(--text-dim);margin-left:auto;font-size:10px;">⌘K</span>
+    </div>
+
+    <div class="topbar-right">
+      <div class="status-pill">
+        <div class="status-dot"></div>
+        LIVE · 3 Regeln aktiv
+      </div>
+      <span style="font-size:18px;cursor:pointer;color:var(--text-mid)">🔔</span>
+      <div class="avatar">DK</div>
+    </div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sidebar-section">Überwachung</div>
+    <div class="nav-item active">
+      <div class="nav-item-left"><span class="nav-icon">◈</span> Dashboard</div>
+    </div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">✉</span> Posteingang</div>
+      <span class="badge badge-cyan">1.204</span>
+    </div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">⚠</span> Bedrohungen</div>
+      <span class="badge badge-red">14</span>
+    </div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">⛔</span> Spam</div>
+      <span class="badge badge-yellow">87</span>
+    </div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">🎣</span> Phishing</div>
+      <span class="badge badge-red">3</span>
+    </div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">✓</span> Zugelassen</div>
+    </div>
+
+    <div class="sidebar-section" style="margin-top:8px">Analyse</div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">◉</span> Absender-Analyse</div>
+    </div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">⊞</span> Domänen-Check</div>
+    </div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">⊕</span> Anhänge</div>
+    </div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">↻</span> Verlauf</div>
+    </div>
+
+    <div class="sidebar-section" style="margin-top:8px">Konfiguration</div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">≡</span> Filter-Regeln</div>
+    </div>
+    <div class="nav-item">
+      <div class="nav-item-left"><span class="nav-icon">⊛</span> Einstellungen</div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-info">
+        Letzte Synchronisation<br>
+        <span style="color:var(--accent4)">vor 12 Sekunden</span><br><br>
+        Nächste Prüfung in<br>
+        <span style="color:var(--text-mid)" id="countdown">00:48</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- Page Header -->
+    <div class="page-header">
+      <div>
+        <div class="page-title">Überwachungs<span>-Dashboard</span></div>
+        <div class="page-subtitle">Dienstag, 24. Feb 2026 · Alle Konten · Letzten 24 Stunden</div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-outline">Export CSV</button>
+        <button class="btn btn-outline">⚙ Filter</button>
+        <button class="btn btn-primary">+ Neue Regel</button>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card k1">
+        <div class="kpi-label">Gesamt Empfangen</div>
+        <div class="kpi-value">1.847</div>
+        <div class="kpi-delta delta-up">↑ +12.4% vs. gestern</div>
+        <svg class="kpi-sparkline" viewBox="0 0 80 40">
+          <polyline points="0,35 10,28 20,32 30,18 40,22 50,12 60,8 70,15 80,10"
+            fill="none" stroke="var(--accent)" stroke-width="2"/>
+        </svg>
+      </div>
+      <div class="kpi-card k2">
+        <div class="kpi-label">Spam / Schädlich</div>
+        <div class="kpi-value">104</div>
+        <div class="kpi-delta delta-down">↑ +5.6% Anstieg</div>
+        <svg class="kpi-sparkline" viewBox="0 0 80 40">
+          <polyline points="0,25 10,30 20,20 30,28 40,22 50,30 60,18 70,25 80,15"
+            fill="none" stroke="var(--accent2)" stroke-width="2"/>
+        </svg>
+      </div>
+      <div class="kpi-card k3">
+        <div class="kpi-label">Verdächtige Links</div>
+        <div class="kpi-value">27</div>
+        <div class="kpi-delta delta-up" style="color:var(--accent3)">▲ Prüfung läuft</div>
+        <svg class="kpi-sparkline" viewBox="0 0 80 40">
+          <polyline points="0,30 10,25 20,35 30,15 40,28 50,20 60,25 70,18 80,22"
+            fill="none" stroke="var(--accent3)" stroke-width="2"/>
+        </svg>
+      </div>
+      <div class="kpi-card k4">
+        <div class="kpi-label">Filter-Trefferquote</div>
+        <div class="kpi-value">98.3%</div>
+        <div class="kpi-delta delta-up">↑ +0.3pp</div>
+        <svg class="kpi-sparkline" viewBox="0 0 80 40">
+          <polyline points="0,20 10,18 20,15 30,12 40,14 50,10 60,8 70,6 80,5"
+            fill="none" stroke="var(--accent4)" stroke-width="2"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Content Grid -->
+    <div class="content-grid">
+
+      <!-- Left: Chart + Table -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+
+        <!-- Traffic Chart -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <div class="card-title-dot"></div>
+              E-Mail Aufkommen · 24h
+            </div>
+            <div style="display:flex;gap:16px;align-items:center">
+              <div style="display:flex;align-items:center;gap:5px;font-family:'DM Mono',monospace;font-size:10px;color:var(--accent)">
+                <div style="width:12px;height:2px;background:var(--accent);border-radius:1px"></div> Empfangen
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;font-family:'DM Mono',monospace;font-size:10px;color:var(--accent2)">
+                <div style="width:12px;height:2px;background:var(--accent2);border-radius:1px"></div> Blockiert
+              </div>
+              <span class="card-action">Vollbild ↗</span>
+            </div>
+          </div>
+          <div class="chart-area">
+            <svg class="chart-svg" viewBox="0 0 600 160" preserveAspectRatio="none">
+              <!-- Grid lines -->
+              <line x1="0" y1="40" x2="600" y2="40" stroke="rgba(30,39,53,0.8)" stroke-width="1"/>
+              <line x1="0" y1="80" x2="600" y2="80" stroke="rgba(30,39,53,0.8)" stroke-width="1"/>
+              <line x1="0" y1="120" x2="600" y2="120" stroke="rgba(30,39,53,0.8)" stroke-width="1"/>
+              <!-- Area fill received -->
+              <defs>
+                <linearGradient id="gradCyan" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(0,229,255,0.3)"/>
+                  <stop offset="100%" stop-color="rgba(0,229,255,0)"/>
+                </linearGradient>
+                <linearGradient id="gradRed" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(255,61,113,0.25)"/>
+                  <stop offset="100%" stop-color="rgba(255,61,113,0)"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,110 C30,105 60,90 90,85 C120,80 150,70 180,65 C210,60 240,50 270,45 C300,40 330,55 360,50 C390,45 420,35 450,30 C480,25 510,40 540,35 C570,30 600,20 600,20 L600,160 L0,160Z"
+                fill="url(#gradCyan)"/>
+              <path d="M0,110 C30,105 60,90 90,85 C120,80 150,70 180,65 C210,60 240,50 270,45 C300,40 330,55 360,50 C390,45 420,35 450,30 C480,25 510,40 540,35 C570,30 600,20 600,20"
+                fill="none" stroke="var(--accent)" stroke-width="2"/>
+              <!-- Blocked area -->
+              <path d="M0,140 C30,138 60,132 90,130 C120,128 150,122 180,125 C210,128 240,118 270,120 C300,122 330,130 360,128 C390,126 420,118 450,122 C480,126 510,132 540,128 C570,124 600,130 600,130 L600,160 L0,160Z"
+                fill="url(#gradRed)"/>
+              <path d="M0,140 C30,138 60,132 90,130 C120,128 150,122 180,125 C210,128 240,118 270,120 C300,122 330,130 360,128 C390,126 420,118 450,122 C480,126 510,132 540,128 C570,124 600,130 600,130"
+                fill="none" stroke="var(--accent2)" stroke-width="1.5" stroke-dasharray="4,3"/>
+              <!-- Data points -->
+              <circle cx="450" cy="30" r="4" fill="var(--accent)" stroke="var(--bg)" stroke-width="2"/>
+              <circle cx="270" cy="120" r="4" fill="var(--accent2)" stroke="var(--bg)" stroke-width="2"/>
+            </svg>
+          </div>
+          <div class="chart-labels">
+            <span>00:00</span><span>03:00</span><span>06:00</span><span>09:00</span>
+            <span>12:00</span><span>15:00</span><span>18:00</span><span>21:00</span><span>Jetzt</span>
+          </div>
+        </div>
+
+        <!-- Email Table -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <div class="card-title-dot" style="background:var(--accent2)"></div>
+              Letzte Aktivitäten
+            </div>
+            <span class="card-action">Alle anzeigen →</span>
+          </div>
+          <table class="email-table">
+            <thead>
+              <tr>
+                <th>Absender</th>
+                <th>Betreff</th>
+                <th>Zeit</th>
+                <th>Status</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="email-sender">
+                    <div class="sender-avatar" style="background:rgba(255,61,113,0.15);color:var(--accent2)">⚠</div>
+                    <div>
+                      <div class="sender-name">suspicious@click-now.xyz</div>
+                      <div class="sender-addr">click-now.xyz · RU</div>
+                    </div>
+                  </div>
+                </td>
+                <td><div class="subject-text">🎁 Sie haben gewonnen! Jetzt einlösen...</div></td>
+                <td><div class="time-text">14:32</div></td>
+                <td><span class="status-tag st-spam">⛔ Spam</span></td>
+                <td>
+                  <div class="score-bar-wrap">
+                    <div class="score-bar"><div class="score-fill" style="width:92%;background:var(--accent2)"></div></div>
+                    <div class="score-val">92</div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="email-sender">
+                    <div class="sender-avatar" style="background:rgba(57,255,20,0.1);color:var(--accent4)">✓</div>
+                    <div>
+                      <div class="sender-name">newsletter@github.com</div>
+                      <div class="sender-addr">github.com · US</div>
+                    </div>
+                  </div>
+                </td>
+                <td><div class="subject-text">GitHub Digest – neue Aktivitäten in Ihren Repos</div></td>
+                <td><div class="time-text">14:18</div></td>
+                <td><span class="status-tag st-clean">✓ Sauber</span></td>
+                <td>
+                  <div class="score-bar-wrap">
+                    <div class="score-bar"><div class="score-fill" style="width:4%;background:var(--accent4)"></div></div>
+                    <div class="score-val">4</div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="email-sender">
+                    <div class="sender-avatar" style="background:rgba(255,61,113,0.2);color:#ff8fab">🎣</div>
+                    <div>
+                      <div class="sender-name">security@paypa1-verify.com</div>
+                      <div class="sender-addr">paypa1-verify.com · CN</div>
+                    </div>
+                  </div>
+                </td>
+                <td><div class="subject-text">Ihr Konto wurde gesperrt – sofort bestätigen!</div></td>
+                <td><div class="time-text">13:55</div></td>
+                <td><span class="status-tag st-phish">🎣 Phishing</span></td>
+                <td>
+                  <div class="score-bar-wrap">
+                    <div class="score-bar"><div class="score-fill" style="width:98%;background:#ff8fab"></div></div>
+                    <div class="score-val">98</div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="email-sender">
+                    <div class="sender-avatar" style="background:rgba(255,170,0,0.12);color:var(--accent3)">?</div>
+                    <div>
+                      <div class="sender-name">marketing@unbekannt-shop.de</div>
+                      <div class="sender-addr">unbekannt-shop.de · DE</div>
+                    </div>
+                  </div>
+                </td>
+                <td><div class="subject-text">Exklusives Angebot nur für Sie – 80% Rabatt</div></td>
+                <td><div class="time-text">13:41</div></td>
+                <td><span class="status-tag st-suspect">⚡ Verdächtig</span></td>
+                <td>
+                  <div class="score-bar-wrap">
+                    <div class="score-bar"><div class="score-fill" style="width:67%;background:var(--accent3)"></div></div>
+                    <div class="score-val">67</div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="email-sender">
+                    <div class="sender-avatar" style="background:rgba(57,255,20,0.1);color:var(--accent4)">✓</div>
+                    <div>
+                      <div class="sender-name">info@anthropic.com</div>
+                      <div class="sender-addr">anthropic.com · US</div>
+                    </div>
+                  </div>
+                </td>
+                <td><div class="subject-text">Claude API – Monatsbericht Februar 2026</div></td>
+                <td><div class="time-text">13:07</div></td>
+                <td><span class="status-tag st-clean">✓ Sauber</span></td>
+                <td>
+                  <div class="score-bar-wrap">
+                    <div class="score-bar"><div class="score-fill" style="width:2%;background:var(--accent4)"></div></div>
+                    <div class="score-val">2</div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="email-sender">
+                    <div class="sender-avatar" style="background:rgba(255,61,113,0.15);color:var(--accent2)">⚠</div>
+                    <div>
+                      <div class="sender-name">auto-mailer@bulk-promo99.net</div>
+                      <div class="sender-addr">bulk-promo99.net · BR</div>
+                    </div>
+                  </div>
+                </td>
+                <td><div class="subject-text">RE: Ihre Anfrage – Dringende Antwort erforderl.</div></td>
+                <td><div class="time-text">12:49</div></td>
+                <td><span class="status-tag st-spam">⛔ Spam</span></td>
+                <td>
+                  <div class="score-bar-wrap">
+                    <div class="score-bar"><div class="score-fill" style="width:85%;background:var(--accent2)"></div></div>
+                    <div class="score-val">85</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Right column -->
+      <div class="right-col">
+
+        <!-- Donut -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <div class="card-title-dot" style="background:var(--accent3)"></div>
+              E-Mail Klassifizierung
+            </div>
+            <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim)">24h</span>
+          </div>
+          <div class="donut-area">
+            <svg class="donut-svg" width="110" height="110" viewBox="0 0 110 110">
+              <!-- bg circle -->
+              <circle cx="55" cy="55" r="42" fill="none" stroke="var(--border)" stroke-width="14"/>
+              <!-- segments: total circumference ~264 -->
+              <!-- Clean: 78% = 206 -->
+              <circle cx="55" cy="55" r="42" fill="none" stroke="var(--accent4)" stroke-width="14"
+                stroke-dasharray="206 264" stroke-dashoffset="0" class="progress-ring"
+                transform="rotate(-90 55 55)"/>
+              <!-- Spam: 11% = 29 -->
+              <circle cx="55" cy="55" r="42" fill="none" stroke="var(--accent2)" stroke-width="14"
+                stroke-dasharray="29 264" stroke-dashoffset="-206" class="progress-ring"
+                transform="rotate(-90 55 55)"/>
+              <!-- Suspect: 8% = 21 -->
+              <circle cx="55" cy="55" r="42" fill="none" stroke="var(--accent3)" stroke-width="14"
+                stroke-dasharray="21 264" stroke-dashoffset="-235" class="progress-ring"
+                transform="rotate(-90 55 55)"/>
+              <!-- Phishing: 3% = 8 -->
+              <circle cx="55" cy="55" r="42" fill="none" stroke="#ff8fab" stroke-width="14"
+                stroke-dasharray="8 264" stroke-dashoffset="-256" class="progress-ring"
+                transform="rotate(-90 55 55)"/>
+              <text x="55" y="52" text-anchor="middle" font-size="18" font-weight="800" fill="var(--text)" font-family="Syne">98.3</text>
+              <text x="55" y="64" text-anchor="middle" font-size="9" fill="var(--text-dim)" font-family="DM Mono">% sicher</text>
+            </svg>
+            <div class="donut-legend">
+              <div class="legend-item">
+                <div class="legend-left">
+                  <div class="legend-dot" style="background:var(--accent4)"></div>
+                  Sauber
+                </div>
+                <div class="legend-pct">78%</div>
+              </div>
+              <div class="legend-item">
+                <div class="legend-left">
+                  <div class="legend-dot" style="background:var(--accent2)"></div>
+                  Spam
+                </div>
+                <div class="legend-pct">11%</div>
+              </div>
+              <div class="legend-item">
+                <div class="legend-left">
+                  <div class="legend-dot" style="background:var(--accent3)"></div>
+                  Verdächtig
+                </div>
+                <div class="legend-pct">8%</div>
+              </div>
+              <div class="legend-item">
+                <div class="legend-left">
+                  <div class="legend-dot" style="background:#ff8fab)"></div>
+                  Phishing
+                </div>
+                <div class="legend-pct">3%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Alerts -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <div class="card-title-dot" style="background:var(--accent2);animation:blink 1s infinite"></div>
+              Aktive Warnungen
+            </div>
+            <span class="badge badge-red">3 neu</span>
+          </div>
+          <div class="alert-list">
+            <div class="alert-item">
+              <div class="alert-icon ai-red">🚨</div>
+              <div class="alert-body">
+                <div class="alert-title" style="color:var(--accent2)">Phishing-Kampagne erkannt</div>
+                <div class="alert-desc">paypa1-verify.com · 3 Versuche in 20 Min.</div>
+                <div class="alert-time">vor 7 Minuten</div>
+              </div>
+            </div>
+            <div class="alert-item">
+              <div class="alert-icon ai-yellow">⚡</div>
+              <div class="alert-body">
+                <div class="alert-title" style="color:var(--accent3)">Unbekannte Domäne blockiert</div>
+                <div class="alert-desc">bulk-promo99.net · DMARC-Fehler · SPF fail</div>
+                <div class="alert-time">vor 22 Minuten</div>
+              </div>
+            </div>
+            <div class="alert-item">
+              <div class="alert-icon ai-cyan">📎</div>
+              <div class="alert-body">
+                <div class="alert-title" style="color:var(--accent)">Verdächtiger Anhang</div>
+                <div class="alert-desc">invoice_Feb26.exe · Sandbox-Analyse läuft</div>
+                <div class="alert-time">vor 41 Minuten</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Sender Domains -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <div class="card-title-dot" style="background:var(--accent)"></div>
+              Top Absender-Domänen
+            </div>
+          </div>
+          <div style="padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+            <!-- domain rows -->
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-mid);width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">github.com</div>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;position:relative">
+                <div style="position:absolute;left:0;top:0;height:100%;width:76%;background:var(--accent);border-radius:2px"></div>
+              </div>
+              <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);min-width:32px;text-align:right">412</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-mid);width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">google.com</div>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;position:relative">
+                <div style="position:absolute;left:0;top:0;height:100%;width:60%;background:var(--accent);border-radius:2px"></div>
+              </div>
+              <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);min-width:32px;text-align:right">318</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent2);width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">click-now.xyz ⚠</div>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;position:relative">
+                <div style="position:absolute;left:0;top:0;height:100%;width:38%;background:var(--accent2);border-radius:2px"></div>
+              </div>
+              <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);min-width:32px;text-align:right">87</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-mid);width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">anthropic.com</div>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;position:relative">
+                <div style="position:absolute;left:0;top:0;height:100%;width:22%;background:var(--accent4);border-radius:2px"></div>
+              </div>
+              <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);min-width:32px;text-align:right">41</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent3);width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">bulk-promo99.net ⚠</div>
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;position:relative">
+                <div style="position:absolute;left:0;top:0;height:100%;width:14%;background:var(--accent3);border-radius:2px"></div>
+              </div>
+              <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim);min-width:32px;text-align:right">17</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Bottom Stats -->
+    <div class="bottom-grid">
+      <div class="mini-stat">
+        <div class="mini-stat-label">Ø Reaktionszeit Filter</div>
+        <div class="mini-stat-value" style="color:var(--accent4)">12ms</div>
+        <div class="mini-stat-sub">↓ 3ms schneller als gestern</div>
+      </div>
+      <div class="mini-stat">
+        <div class="mini-stat-label">Anhänge geprüft</div>
+        <div class="mini-stat-value" style="color:var(--accent)">384</div>
+        <div class="mini-stat-sub">2 in Sandbox-Analyse</div>
+      </div>
+      <div class="mini-stat">
+        <div class="mini-stat-label">DMARC-Fehler</div>
+        <div class="mini-stat-value" style="color:var(--accent2)">23</div>
+        <div class="mini-stat-sub">↑ 8 mehr als gestern</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // Countdown timer
+  let seconds = 48;
+  setInterval(() => {
+    seconds--;
+    if (seconds < 0) seconds = 60;
+    const m = String(Math.floor(seconds / 60)).padStart(2,'0');
+    const s = String(seconds % 60).padStart(2,'0');
+    document.getElementById('countdown').textContent = `${m}:${s}`;
+  }, 1000);
+
+  // Nav items click
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+    });
+  });
+
+  // Table row highlight
+  document.querySelectorAll('.email-table tbody tr').forEach(row => {
+    row.addEventListener('click', () => {
+      document.querySelectorAll('.email-table tbody tr').forEach(r => r.style.background = '');
+      row.style.background = 'rgba(0,229,255,0.04)';
+      row.style.borderLeft = '2px solid var(--accent)';
+    });
+  });
+</script>
+
+</body>
+</html>
